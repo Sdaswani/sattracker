@@ -1042,86 +1042,75 @@
         setupButton.disabled = true;
         return;
       }
-      let askedForSheets = false;
       let nextAction = "read";
-      let automatic = false;
+      let needConsent = false;
       const tokenClient = google.accounts.oauth2.initTokenClient({
         client_id: CLIENT_ID,
         scope: SCOPE,
         callback: (response) => {
-          automatic = false;
           if (response.error) {
             showAuthError("Google sign-in failed: " + response.error);
             return;
           }
           const granted = response.scope || "";
           if (!granted.includes(SHEETS_SCOPE)) {
-            if (!askedForSheets) {
-              askedForSheets = true;
-              showAuthError("Google signed you in without Sheets access. Asking for that permission…");
-              tokenClient.requestAccessToken({ prompt: "consent" });
-              return;
-            }
-            showAuthError("Google did not grant Sheets access. On the consent screen, allow the spreadsheets permission, then try again.");
+            needConsent = true;
+            showAuthError("Google did not grant Sheets access. Click Sign in again and allow it.");
             return;
           }
+          needConsent = false;
           saveSession(response);
           const job = nextAction === "setup" ? setupDatabase : enterApp;
           job(response.access_token).catch((error) => {
             if (String(error.message).startsWith("401")) {
-              clearSession();
-              showAuthError("Saved sign-in was rejected. Sign in again.");
+              sessionExpired();
               return;
             }
             showAuthError(error.message);
           });
         },
         error_callback: (error) => {
-          if (automatic) {
-            automatic = false;
-            gateStatusEl.textContent = "";
-            return;
-          }
           showAuthError("Google sign-in failed: " + (error.message || error.type || "popup closed"));
         },
       });
 
-      function useToken(token, action, allowRefresh) {
+      function sessionExpired() {
+        clearSession();
+        state.token = "";
+        appEl.hidden = true;
+        gateEl.hidden = false;
+        gateStatusEl.textContent = "Sign-in expired. Click Sign in with Google.";
+        gateStatusEl.className = "err";
+      }
+
+      function useToken(token, action) {
         const job = action === "setup" ? setupDatabase : enterApp;
         job(token).catch((error) => {
-          if (allowRefresh && String(error.message).startsWith("401")) {
-            clearSession();
-            askedForSheets = false;
-            nextAction = action;
-            showAuthError("Saved sign-in expired. Asking Google again…");
-            tokenClient.requestAccessToken({ prompt: "" });
+          if (String(error.message).startsWith("401")) {
+            sessionExpired();
             return;
           }
           showAuthError(error.message);
         });
       }
 
-      const saved = readSession();
-      if (saved) {
-        useToken(saved.access_token, "read", true);
-      } else {
-        automatic = true;
-        nextAction = "read";
-        tokenClient.requestAccessToken({ prompt: "" });
+      function requestSignIn() {
+        tokenClient.requestAccessToken({ prompt: needConsent ? "consent" : "" });
       }
 
+      const saved = readSession();
+      if (saved) useToken(saved.access_token, "read");
+
       button.addEventListener("click", () => {
-        askedForSheets = false;
-        automatic = false;
         nextAction = "read";
         gateStatusEl.textContent = "";
         const session = readSession();
         if (session) {
-          useToken(session.access_token, "read", true);
+          useToken(session.access_token, "read");
           return;
         }
         gateStatusEl.textContent = "Opening Google sign-in…";
-        tokenClient.requestAccessToken({ prompt: "" });
+        requestSignIn();
       });
       setupButton.addEventListener("click", async () => {
         resultEl.innerHTML = "";
@@ -1131,17 +1120,15 @@
           return;
         }
         passwordInput.value = "";
-        askedForSheets = false;
-        automatic = false;
         nextAction = "setup";
         const session = readSession();
         if (session) {
           setStatus("Using the saved sign-in…");
-          useToken(session.access_token, "setup", true);
+          useToken(session.access_token, "setup");
           return;
         }
         setStatus("Opening Google sign-in…");
-        tokenClient.requestAccessToken({ prompt: "" });
+        requestSignIn();
       });
     }
 
