@@ -30,7 +30,8 @@
   <script>
     const CLIENT_ID = "1052608179455-k09jjr1nuadhvqkmeur124ur51oc1fnq.apps.googleusercontent.com";
     const SPREADSHEET_ID = "1gXffcczfI9JAaHS1EZbmsS_EwCm7vUdornbpG95g87s";
-    const SCOPE = "https://www.googleapis.com/auth/spreadsheets https://www.googleapis.com/auth/userinfo.email";
+    const SHEETS_SCOPE = "https://www.googleapis.com/auth/spreadsheets";
+    const SCOPE = SHEETS_SCOPE + " https://www.googleapis.com/auth/userinfo.email";
     const ALLOWED_ORIGINS = ["https://sdaswani.github.io", "http://localhost:5173"];
 
     const statusEl = document.getElementById("status");
@@ -80,17 +81,23 @@
       resultEl.innerHTML = html;
     }
 
+    async function signedInEmail(token) {
+      const response = await fetch("https://www.googleapis.com/oauth2/v2/userinfo", {
+        headers: { Authorization: "Bearer " + token },
+      });
+      if (!response.ok) return "";
+      const profile = await response.json();
+      return profile.email || "";
+    }
+
     async function readSheet(token) {
       setStatus("Signed in. Reading the spreadsheet…");
-      const profile = await fetch("https://www.googleapis.com/oauth2/v2/userinfo", {
-        headers: { Authorization: "Bearer " + token },
-      }).then((response) => response.json());
       const meta = await api(SPREADSHEET_ID + "?fields=properties.title,sheets.properties.title", token);
       const firstTab = meta.sheets?.[0]?.properties?.title || "Sheet1";
       const range = encodeURIComponent(firstTab + "!A1:Z30");
       const values = await api(SPREADSHEET_ID + "/values/" + range, token);
-      const who = profile.email || "signed-in user";
-      setStatus("Connected as " + who + ".", "ok");
+      const email = await signedInEmail(token);
+      setStatus(email ? "Connected as " + email + "." : "Connected. Sheets access works.", "ok");
       renderSheet(meta, values);
     }
 
@@ -104,6 +111,7 @@
         button.disabled = true;
         return;
       }
+      let askedForSheets = false;
       const tokenClient = google.accounts.oauth2.initTokenClient({
         client_id: CLIENT_ID,
         scope: SCOPE,
@@ -112,9 +120,20 @@
             setStatus("Google sign-in failed: " + response.error, "err");
             return;
           }
+          const granted = response.scope || "";
+          if (!granted.includes(SHEETS_SCOPE)) {
+            if (!askedForSheets) {
+              askedForSheets = true;
+              setStatus("Google signed you in without Sheets access. Asking for that permission…");
+              tokenClient.requestAccessToken({ prompt: "consent" });
+              return;
+            }
+            setStatus("Google did not grant Sheets access. On the consent screen, allow the spreadsheets permission, then try again.\nGranted: " + (granted || "(none)"), "err");
+            return;
+          }
           readSheet(response.access_token).catch((error) => {
             resultEl.innerHTML = "";
-            setStatus(error.message, "err");
+            setStatus(error.message + (granted ? "\nGranted: " + granted : ""), "err");
           });
         },
         error_callback: (error) => {
@@ -123,8 +142,9 @@
       });
       button.addEventListener("click", () => {
         resultEl.innerHTML = "";
+        askedForSheets = false;
         setStatus("Opening Google sign-in…");
-        tokenClient.requestAccessToken({ prompt: "select_account" });
+        tokenClient.requestAccessToken({ prompt: "consent" });
       });
     }
 
