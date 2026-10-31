@@ -1,0 +1,19 @@
+index.html
+  s_d80bcc07142af5::t_632592bcac11df 6,9-69,73-139,141-172,179,182,186,191-221,228-232,239-244,246,249-250,276-277,284-323,392-406,503-565,568-619,623-767,769-889,892-1029,1038-1040,1054,1061,1065,1069,1073,1076,1082,1085,1090,1096,1100,1117,1123,1148
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "75fc1bc342abbb9b5cb9f72f012e650d10d26df6",
+  "prompts": {},
+  "sessions": {
+    "s_d80bcc07142af5": {
+      "agent_id": {
+        "tool": "cursor",
+        "id": "d257f534-6665-40da-931c-f2c950438dd0",
+        "model": "grok-4.7"
+      },
+      "human_author": "Susheel Daswani <Sdaswani@cs.stanford.edu>"
+    }
+  }
+}
