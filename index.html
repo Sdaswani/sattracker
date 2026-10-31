@@ -99,6 +99,51 @@
       return "'" + title.replaceAll("'", "''") + "'!" + a1;
     }
 
+    const SESSION_COOKIE = "sattracker_session";
+
+    function cookiePath() {
+      return location.hostname.endsWith("github.io") ? "/sattracker" : "/";
+    }
+
+    function writeCookie(value, maxAge) {
+      const secure = location.protocol === "https:" ? "; Secure" : "";
+      document.cookie = SESSION_COOKIE + "=" + value + "; Max-Age=" + maxAge + "; Path=" + cookiePath() + "; SameSite=Lax" + secure;
+    }
+
+    function clearSession() {
+      writeCookie("", 0);
+    }
+
+    function readSession() {
+      const prefix = SESSION_COOKIE + "=";
+      const raw = document.cookie.split("; ").find((part) => part.startsWith(prefix));
+      if (!raw) return null;
+      try {
+        const session = JSON.parse(decodeURIComponent(raw.slice(prefix.length)));
+        if (!session.access_token || !session.expires_at || session.expires_at <= Date.now()) {
+          clearSession();
+          return null;
+        }
+        if (!String(session.scope || "").includes(SHEETS_SCOPE)) {
+          clearSession();
+          return null;
+        }
+        return session;
+      } catch (error) {
+        clearSession();
+        return null;
+      }
+    }
+
+    function saveSession(response) {
+      const seconds = Math.max(60, Number(response.expires_in || 3600) - 60);
+      writeCookie(encodeURIComponent(JSON.stringify({
+        access_token: response.access_token,
+        scope: response.scope || "",
+        expires_at: Date.now() + seconds * 1000,
+      })), seconds);
+    }
+
     async function passwordMatches(input) {
       const digest = await crypto.subtle.digest("SHA-256", new TextEncoder().encode(input));
       const hex = [...new Uint8Array(digest)].map((byte) => byte.toString(16).padStart(2, "0")).join("");
@@ -269,10 +314,12 @@
       }
       let askedForSheets = false;
       let nextAction = "read";
+      let automatic = false;
       const tokenClient = google.accounts.oauth2.initTokenClient({
         client_id: CLIENT_ID,
         scope: SCOPE,
         callback: (response) => {
+          automatic = false;
           if (response.error) {
             setStatus("Google sign-in failed: " + response.error, "err");
             return;
@@ -288,22 +335,68 @@
             setStatus("Google did not grant Sheets access. On the consent screen, allow the spreadsheets permission, then try again.\nGranted: " + (granted || "(none)"), "err");
             return;
           }
-          const action = nextAction === "setup" ? setupDatabase : readSheet;
-          action(response.access_token).catch((error) => {
+          saveSession(response);
+          const action = nextAction;
+          const job = action === "setup" ? setupDatabase : readSheet;
+          job(response.access_token).catch((error) => {
+            if (String(error.message).startsWith("401")) {
+              clearSession();
+              setStatus("Saved sign-in was rejected. Sign in again.", "err");
+              return;
+            }
             resultEl.innerHTML = "";
             setStatus(error.message + (granted ? "\nGranted: " + granted : ""), "err");
           });
         },
         error_callback: (error) => {
+          if (automatic) {
+            automatic = false;
+            setStatus("Waiting for Google sign-in.");
+            return;
+          }
           setStatus("Google sign-in failed: " + (error.message || error.type || "popup closed"), "err");
         },
       });
+
+      function useToken(token, action, allowRefresh) {
+        const job = action === "setup" ? setupDatabase : readSheet;
+        job(token).catch((error) => {
+          if (allowRefresh && String(error.message).startsWith("401")) {
+            clearSession();
+            askedForSheets = false;
+            nextAction = action;
+            setStatus("Saved sign-in expired. Asking Google again…");
+            tokenClient.requestAccessToken({ prompt: "" });
+            return;
+          }
+          resultEl.innerHTML = "";
+          setStatus(error.message, "err");
+        });
+      }
+
+      const saved = readSession();
+      if (saved) {
+        setStatus("Using the saved sign-in…");
+        useToken(saved.access_token, "read", true);
+      } else {
+        automatic = true;
+        nextAction = "read";
+        tokenClient.requestAccessToken({ prompt: "" });
+      }
+
       button.addEventListener("click", () => {
         resultEl.innerHTML = "";
         askedForSheets = false;
+        automatic = false;
         nextAction = "read";
+        const session = readSession();
+        if (session) {
+          setStatus("Using the saved sign-in…");
+          useToken(session.access_token, "read", true);
+          return;
+        }
         setStatus("Opening Google sign-in…");
-        tokenClient.requestAccessToken({ prompt: "consent" });
+        tokenClient.requestAccessToken({ prompt: "" });
       });
       setupButton.addEventListener("click", async () => {
         resultEl.innerHTML = "";
@@ -314,9 +407,16 @@
         }
         passwordInput.value = "";
         askedForSheets = false;
+        automatic = false;
         nextAction = "setup";
+        const session = readSession();
+        if (session) {
+          setStatus("Using the saved sign-in…");
+          useToken(session.access_token, "setup", true);
+          return;
+        }
         setStatus("Opening Google sign-in…");
-        tokenClient.requestAccessToken({ prompt: "consent" });
+        tokenClient.requestAccessToken({ prompt: "" });
       });
     }
 
