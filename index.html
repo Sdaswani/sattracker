@@ -8,8 +8,11 @@
     :root { color-scheme: light; }
     body { font: 15px/1.45 system-ui, sans-serif; margin: 2rem auto; max-width: 960px; padding: 0 1rem; color: #1a1a1a; }
     h1 { font-size: 1.25rem; margin: 0 0 0.25rem; }
+    h2 { font-size: 1.05rem; margin: 2rem 0 0.25rem; }
     p.hint { color: #555; margin-top: 0; }
-    button { font: inherit; padding: 0.45rem 0.8rem; cursor: pointer; }
+    button, input { font: inherit; padding: 0.45rem 0.8rem; }
+    button { cursor: pointer; }
+    label { display: flex; gap: 0.6rem; align-items: center; margin: 0.6rem 0; }
     #status { margin: 1rem 0; padding: 0.7rem 0.8rem; background: #f4f4f4; border-radius: 6px; white-space: pre-wrap; }
     #status.ok { background: #e7f6ec; }
     #status.err { background: #fdecea; }
@@ -17,6 +20,7 @@
     th, td { border: 1px solid #ddd; padding: 0.35rem 0.5rem; text-align: left; vertical-align: top; }
     th { background: #fafafa; }
     code { font-size: 0.92em; }
+    ul { padding-left: 1.2rem; }
   </style>
 </head>
 <body>
@@ -26,6 +30,11 @@
   <div id="status">Waiting for Google sign-in.</div>
   <div id="result"></div>
 
+  <h2>Database setup</h2>
+  <p class="hint">Creates missing tabs and writes a header row only when that row is empty. Existing cells stay as they are.</p>
+  <label>Password <input id="setup-password" type="password" autocomplete="off"></label>
+  <button id="setup" type="button">Set up database</button>
+
   <script src="https://accounts.google.com/gsi/client" async defer></script>
   <script>
     const CLIENT_ID = "1052608179455-k09jjr1nuadhvqkmeur124ur51oc1fnq.apps.googleusercontent.com";
@@ -33,10 +42,20 @@
     const SHEETS_SCOPE = "https://www.googleapis.com/auth/spreadsheets";
     const SCOPE = SHEETS_SCOPE + " https://www.googleapis.com/auth/userinfo.email";
     const ALLOWED_ORIGINS = ["https://sdaswani.github.io", "http://localhost:5173"];
+    const SETUP_PASSWORD_SHA256 = "27845b1a8d8d2e025b559ed2e66826d66b29bf3d6570969921f7549599e65e65";
+    const SCHEMA = [
+      { title: "Tickets", headers: ["id", "number", "type", "parent_id", "milestone_id", "title", "description", "status", "priority", "assignee", "labels", "created_at", "created_by", "updated_at", "updated_by", "deleted_at"] },
+      { title: "Milestones", headers: ["id", "name", "target_date", "description", "status", "created_at", "created_by", "updated_at", "updated_by", "deleted_at"] },
+      { title: "Fields", headers: ["id", "entity", "key", "label", "type", "options", "position"] },
+      { title: "FieldValues", headers: ["id", "entity", "entity_id", "field_id", "value", "updated_at"] },
+      { title: "_meta", headers: ["key", "value"] },
+    ];
 
     const statusEl = document.getElementById("status");
     const resultEl = document.getElementById("result");
     const button = document.getElementById("signin");
+    const setupButton = document.getElementById("setup");
+    const passwordInput = document.getElementById("setup-password");
 
     function setStatus(message, kind) {
       statusEl.textContent = message;
@@ -50,16 +69,153 @@
         .replaceAll(">", "&gt;");
     }
 
-    async function api(path, token) {
+    function columnName(count) {
+      let name = "";
+      let n = count;
+      while (n > 0) {
+        const remainder = (n - 1) % 26;
+        name = String.fromCharCode(65 + remainder) + name;
+        n = Math.floor((n - 1) / 26);
+      }
+      return name;
+    }
+
+    function cellsOf(row) {
+      const cells = (row || []).map((cell) => String(cell));
+      while (cells.length && cells[cells.length - 1] === "") cells.pop();
+      return cells;
+    }
+
+    function rowEmpty(row) {
+      return cellsOf(row).length === 0;
+    }
+
+    function sameHeaders(row, expected) {
+      const cells = cellsOf(row);
+      return cells.length === expected.length && expected.every((header, index) => cells[index] === header);
+    }
+
+    function rangeOf(title, a1) {
+      return "'" + title.replaceAll("'", "''") + "'!" + a1;
+    }
+
+    async function passwordMatches(input) {
+      const digest = await crypto.subtle.digest("SHA-256", new TextEncoder().encode(input));
+      const hex = [...new Uint8Array(digest)].map((byte) => byte.toString(16).padStart(2, "0")).join("");
+      return hex === SETUP_PASSWORD_SHA256;
+    }
+
+    async function sheets(path, token, { method = "GET", body } = {}) {
       const response = await fetch("https://sheets.googleapis.com/v4/spreadsheets/" + path, {
-        headers: { Authorization: "Bearer " + token },
+        method,
+        headers: {
+          Authorization: "Bearer " + token,
+          ...(body ? { "Content-Type": "application/json" } : {}),
+        },
+        body: body ? JSON.stringify(body) : undefined,
       });
-      const body = await response.json().catch(() => ({}));
+      const payload = await response.json().catch(() => ({}));
       if (!response.ok) {
-        const message = body.error?.message || response.statusText;
+        const message = payload.error?.message || response.statusText;
         throw new Error(response.status + " " + message);
       }
-      return body;
+      return payload;
+    }
+
+    async function spreadsheetProperties(token) {
+      const meta = await sheets(SPREADSHEET_ID + "?fields=sheets.properties", token);
+      return new Map((meta.sheets || []).map((sheet) => [sheet.properties.title, sheet.properties]));
+    }
+
+    async function setupDatabase(token) {
+      setStatus("Signed in. Checking the spreadsheet…");
+      const notes = [];
+      let properties = await spreadsheetProperties(token);
+      const missing = SCHEMA.filter((sheet) => !properties.has(sheet.title));
+      if (missing.length) {
+        await sheets(SPREADSHEET_ID + ":batchUpdate", token, {
+          method: "POST",
+          body: {
+            requests: missing.map((sheet) => ({
+              addSheet: { properties: { title: sheet.title, gridProperties: { frozenRowCount: 1 } } },
+            })),
+          },
+        });
+        missing.forEach((sheet) => notes.push("Created tab " + sheet.title + "."));
+        properties = await spreadsheetProperties(token);
+      }
+
+      const ranges = SCHEMA.map((sheet) => rangeOf(sheet.title, "A1:Z1"));
+      ranges.push(rangeOf("_meta", "A1:B50"));
+      const query = ranges.map((range) => "ranges=" + encodeURIComponent(range)).join("&");
+      const got = await sheets(SPREADSHEET_ID + "/values:batchGet?" + query, token);
+      const valueRanges = got.valueRanges || [];
+      const writes = [];
+      const readyTitles = [];
+
+      SCHEMA.forEach((sheet, index) => {
+        const header = valueRanges[index]?.values?.[0];
+        if (rowEmpty(header)) {
+          const end = columnName(sheet.headers.length);
+          writes.push({ range: rangeOf(sheet.title, "A1:" + end + "1"), values: [sheet.headers] });
+          notes.push("Wrote headers on " + sheet.title + ".");
+          readyTitles.push(sheet.title);
+          return;
+        }
+        if (sameHeaders(header, sheet.headers)) {
+          notes.push(sheet.title + " headers already match.");
+          readyTitles.push(sheet.title);
+          return;
+        }
+        notes.push("Skipped " + sheet.title + ": the header row is different, so its cells were left alone.");
+      });
+
+      if (readyTitles.includes("_meta")) {
+        const metaRows = valueRanges[SCHEMA.length]?.values || [];
+        const existing = metaRows.slice(1).find((row) => String(row[0] || "") === "schema_version");
+        if (!existing) {
+          const target = metaRows.length === 0 ? 2 : metaRows.length + 1;
+          writes.push({ range: rangeOf("_meta", "A" + target + ":B" + target), values: [["schema_version", "1"]] });
+          notes.push("Set schema_version to 1.");
+        } else if (String(existing[1] ?? "") === "1") {
+          notes.push("schema_version is already 1.");
+        } else {
+          notes.push("Left schema_version at " + existing[1] + ".");
+        }
+      }
+
+      if (writes.length) {
+        await sheets(SPREADSHEET_ID + "/values:batchUpdate", token, {
+          method: "POST",
+          body: { valueInputOption: "RAW", data: writes },
+        });
+      }
+
+      const formatRequests = readyTitles.map((title) => properties.get(title)?.sheetId).filter((id) => id !== undefined).flatMap((sheetId) => ([
+        {
+          updateSheetProperties: {
+            properties: { sheetId, gridProperties: { frozenRowCount: 1 } },
+            fields: "gridProperties.frozenRowCount",
+          },
+        },
+        {
+          repeatCell: {
+            range: { sheetId, startRowIndex: 0, endRowIndex: 1 },
+            cell: { userEnteredFormat: { textFormat: { bold: true } } },
+            fields: "userEnteredFormat.textFormat.bold",
+          },
+        },
+      ]));
+      if (formatRequests.length) {
+        await sheets(SPREADSHEET_ID + ":batchUpdate", token, {
+          method: "POST",
+          body: { requests: formatRequests },
+        });
+      }
+
+      const skipped = notes.some((note) => note.startsWith("Skipped"));
+      setStatus(skipped ? "Setup finished, with some tabs left unchanged." : "Database setup finished. No existing data rows were changed.", skipped ? "err" : "ok");
+      resultEl.innerHTML = "<ul>" + notes.map((note) => "<li>" + escapeHtml(note) + "</li>").join("") + "</ul>";
     }
 
     function renderSheet(meta, values) {
@@ -92,10 +248,9 @@
 
     async function readSheet(token) {
       setStatus("Signed in. Reading the spreadsheet…");
-      const meta = await api(SPREADSHEET_ID + "?fields=properties.title,sheets.properties.title", token);
+      const meta = await sheets(SPREADSHEET_ID + "?fields=properties.title,sheets.properties.title", token);
       const firstTab = meta.sheets?.[0]?.properties?.title || "Sheet1";
-      const range = encodeURIComponent(firstTab + "!A1:Z30");
-      const values = await api(SPREADSHEET_ID + "/values/" + range, token);
+      const values = await sheets(SPREADSHEET_ID + "/values/" + encodeURIComponent(firstTab + "!A1:Z30"), token);
       const email = await signedInEmail(token);
       setStatus(email ? "Connected as " + email + "." : "Connected. Sheets access works.", "ok");
       renderSheet(meta, values);
@@ -109,9 +264,11 @@
       if (!ALLOWED_ORIGINS.includes(location.origin)) {
         setStatus("Open https://sdaswani.github.io/sattracker/ so Google sign-in can run. This page is " + location.origin + ".", "err");
         button.disabled = true;
+        setupButton.disabled = true;
         return;
       }
       let askedForSheets = false;
+      let nextAction = "read";
       const tokenClient = google.accounts.oauth2.initTokenClient({
         client_id: CLIENT_ID,
         scope: SCOPE,
@@ -131,7 +288,8 @@
             setStatus("Google did not grant Sheets access. On the consent screen, allow the spreadsheets permission, then try again.\nGranted: " + (granted || "(none)"), "err");
             return;
           }
-          readSheet(response.access_token).catch((error) => {
+          const action = nextAction === "setup" ? setupDatabase : readSheet;
+          action(response.access_token).catch((error) => {
             resultEl.innerHTML = "";
             setStatus(error.message + (granted ? "\nGranted: " + granted : ""), "err");
           });
@@ -143,6 +301,20 @@
       button.addEventListener("click", () => {
         resultEl.innerHTML = "";
         askedForSheets = false;
+        nextAction = "read";
+        setStatus("Opening Google sign-in…");
+        tokenClient.requestAccessToken({ prompt: "consent" });
+      });
+      setupButton.addEventListener("click", async () => {
+        resultEl.innerHTML = "";
+        const accepted = await passwordMatches(passwordInput.value);
+        if (!accepted) {
+          setStatus("That password is not valid.", "err");
+          return;
+        }
+        passwordInput.value = "";
+        askedForSheets = false;
+        nextAction = "setup";
         setStatus("Opening Google sign-in…");
         tokenClient.requestAccessToken({ prompt: "consent" });
       });
