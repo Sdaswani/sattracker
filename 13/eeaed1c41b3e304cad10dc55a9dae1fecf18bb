@@ -1,0 +1,19 @@
+index.html
+  s_d80bcc07142af5::t_c1deb6ccb3e375 1-134
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "13eeaed1c41b3e304cad10dc55a9dae1fecf18bb",
+  "prompts": {},
+  "sessions": {
+    "s_d80bcc07142af5": {
+      "agent_id": {
+        "tool": "cursor",
+        "id": "d257f534-6665-40da-931c-f2c950438dd0",
+        "model": "unknown"
+      },
+      "human_author": "Susheel Daswani <Sdaswani@cs.stanford.edu>"
+    }
+  }
+}
