@@ -219,6 +219,7 @@
       view: "mine",
       milestoneId: "",
       epicId: "",
+      saving: false,
       draft: null,
       milestoneDraft: null,
       suppressClick: false,
@@ -584,6 +585,56 @@
       state.users = await loadRecords(state.token, "Users", userHeaders);
     }
 
+    function dataStamp() {
+      const tickets = state.tickets.map((ticket) => [ticket.id, ticket.updated_at, ticket.deleted_at, ticket.title, ticket.status, ticket.assignee, ticket.due_date, ticket.milestone_id, ticket.parent_id, ticket.priority, ticket.number, ticket.type, ticket.labels].join("\t")).join("\n");
+      const milestones = state.milestones.map((milestone) => [milestone.id, milestone.updated_at, milestone.deleted_at, milestone.name, milestone.target_date, milestone.status].join("\t")).join("\n");
+      const users = state.users.map((user) => [user.email, user.name].join("\t")).join("\n");
+      return tickets + "\n--\n" + milestones + "\n--\n" + users;
+    }
+
+    function viewIsBusy() {
+      return state.saving || state.dragging || document.getElementById("editor").open || document.getElementById("milestone-dialog").open;
+    }
+
+    async function refreshQuietly() {
+      if (!state.token || !state.headers.Tickets.length || viewIsBusy()) return;
+      const before = dataStamp();
+      const titles = ["Tickets", "Milestones", "Users"];
+      const query = titles.map((title) => "ranges=" + encodeURIComponent(rangeOf(title, "A2:" + columnName(Math.max(state.headers[title].length, 1))))).join("&");
+      let got;
+      try {
+        got = await sheets(SPREADSHEET_ID + "/values:batchGet?" + query, state.token);
+      } catch (error) {
+        if (String(error.message).startsWith("401")) onSessionExpired();
+        return;
+      }
+      if (viewIsBusy()) return;
+      const valueRanges = got.valueRanges || [];
+      titles.forEach((title, index) => {
+        const headers = state.headers[title];
+        state[title === "Tickets" ? "tickets" : title === "Milestones" ? "milestones" : "users"] = (valueRanges[index]?.values || []).map((row, rowIndex) => rowEmpty(row) ? null : recordFrom(headers, row, rowIndex + 2)).filter(Boolean);
+      });
+      if (dataStamp() === before) return;
+      const board = viewEl.querySelector(".board");
+      const scrollLeft = board ? board.scrollLeft : 0;
+      render();
+      const nextBoard = viewEl.querySelector(".board");
+      if (nextBoard) nextBoard.scrollLeft = scrollLeft;
+    }
+
+    let pollTimer = 0;
+    function startPolling() {
+      if (pollTimer) return;
+      pollTimer = setInterval(refreshQuietly, 15000);
+    }
+
+    function stopPolling() {
+      clearInterval(pollTimer);
+      pollTimer = 0;
+    }
+
+    let onSessionExpired = () => {};
+
     function activeMilestones() {
       return state.milestones.filter((milestone) => !milestone.deleted_at).sort((a, b) => (a.target_date || "9999").localeCompare(b.target_date || "9999") || a.name.localeCompare(b.name));
     }
@@ -843,6 +894,7 @@
         return;
       }
       document.getElementById("form-error").textContent = "";
+      state.saving = true;
       try {
         await writeTicket(record);
         document.getElementById("editor").close();
@@ -850,6 +902,8 @@
         render();
       } catch (error) {
         document.getElementById("form-error").textContent = error.message;
+      } finally {
+        state.saving = false;
       }
     }
 
@@ -860,6 +914,7 @@
       record.deleted_at = nowIso();
       record.updated_at = record.deleted_at;
       record.updated_by = state.email;
+      state.saving = true;
       try {
         await writeTicket(record);
         document.getElementById("editor").close();
@@ -867,12 +922,15 @@
         render();
       } catch (error) {
         document.getElementById("form-error").textContent = error.message;
+      } finally {
+        state.saving = false;
       }
     }
 
     async function changeStatus(ticket, status) {
       const now = nowIso();
       const record = { ...ticket, status, updated_at: now, updated_by: state.email };
+      state.saving = true;
       try {
         await writeTicket(record);
         await reloadData();
@@ -881,6 +939,8 @@
         setBanner(error.message, "err");
         await reloadData().catch(() => {});
         render();
+      } finally {
+        state.saving = false;
       }
     }
 
@@ -935,6 +995,7 @@
         document.getElementById("milestone-error").textContent = "A name is required.";
         return;
       }
+      state.saving = true;
       try {
         await writeMilestone(record);
         document.getElementById("milestone-dialog").close();
@@ -942,6 +1003,8 @@
         render();
       } catch (error) {
         document.getElementById("milestone-error").textContent = error.message;
+      } finally {
+        state.saving = false;
       }
     }
 
@@ -950,6 +1013,7 @@
       const record = milestoneFromForm();
       record.deleted_at = nowIso();
       record.updated_at = record.deleted_at;
+      state.saving = true;
       try {
         await writeMilestone(record);
         if (state.milestoneId === record.id) state.milestoneId = "";
@@ -958,6 +1022,8 @@
         render();
       } catch (error) {
         document.getElementById("milestone-error").textContent = error.message;
+      } finally {
+        state.saving = false;
       }
     }
 
@@ -977,6 +1043,7 @@
       await reloadData();
       setBanner("");
       render();
+      startPolling();
     }
 
     function showAuthError(message) {
@@ -989,6 +1056,7 @@
     }
 
     function signOut() {
+      stopPolling();
       clearSession();
       state.token = "";
       appEl.hidden = true;
@@ -1016,6 +1084,9 @@
       document.getElementById("new-epic").addEventListener("click", () => openTicket(blankTicket("epic")));
       document.getElementById("new-milestone").addEventListener("click", () => openMilestone({ status: "planned" }));
       document.getElementById("signout").addEventListener("click", signOut);
+      document.addEventListener("visibilitychange", () => {
+        if (!document.hidden) refreshQuietly();
+      });
       document.getElementById("ticket-form").addEventListener("submit", saveTicket);
       document.getElementById("f-cancel").addEventListener("click", () => document.getElementById("editor").close());
       document.getElementById("f-delete").addEventListener("click", deleteTicket);
@@ -1041,6 +1112,7 @@
         state.dragging = card.dataset.id;
       });
       viewEl.addEventListener("dragend", () => {
+        state.dragging = "";
         state.suppressClick = true;
         setTimeout(() => { state.suppressClick = false; }, 50);
       });
@@ -1105,6 +1177,7 @@
       });
 
       function sessionExpired() {
+        stopPolling();
         clearSession();
         state.token = "";
         appEl.hidden = true;
@@ -1112,6 +1185,7 @@
         gateStatusEl.textContent = "Sign-in expired. Click Sign in with Google.";
         gateStatusEl.className = "err";
       }
+      onSessionExpired = sessionExpired;
 
       function useToken(token, action) {
         const job = action === "setup" ? setupDatabase : enterApp;
