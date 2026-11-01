@@ -362,13 +362,29 @@
       }
     }
 
+    let refreshTimer = 0;
+    let renewSession = () => {};
+
+    function clearTokenRefresh() {
+      clearTimeout(refreshTimer);
+      refreshTimer = 0;
+    }
+
+    function scheduleTokenRefresh(expiresAt) {
+      clearTokenRefresh();
+      const delay = Math.max(15000, expiresAt - Date.now() - 5 * 60 * 1000);
+      refreshTimer = setTimeout(() => renewSession(), delay);
+    }
+
     function saveSession(response) {
       const seconds = Math.max(60, Number(response.expires_in || 3600) - 60);
+      const expiresAt = Date.now() + seconds * 1000;
       writeCookie(encodeURIComponent(JSON.stringify({
         access_token: response.access_token,
         scope: response.scope || "",
-        expires_at: Date.now() + seconds * 1000,
+        expires_at: expiresAt,
       })), seconds);
+      scheduleTokenRefresh(expiresAt);
     }
 
     async function passwordMatches(input) {
@@ -1057,6 +1073,7 @@
 
     function signOut() {
       stopPolling();
+      clearTokenRefresh();
       clearSession();
       state.token = "";
       appEl.hidden = true;
@@ -1085,7 +1102,10 @@
       document.getElementById("new-milestone").addEventListener("click", () => openMilestone({ status: "planned" }));
       document.getElementById("signout").addEventListener("click", signOut);
       document.addEventListener("visibilitychange", () => {
-        if (!document.hidden) refreshQuietly();
+        if (document.hidden) return;
+        const session = readSession();
+        if (!session || session.expires_at - Date.now() < 5 * 60 * 1000) renewSession();
+        refreshQuietly();
       });
       document.getElementById("ticket-form").addEventListener("submit", saveTicket);
       document.getElementById("f-cancel").addEventListener("click", () => document.getElementById("editor").close());
@@ -1146,22 +1166,29 @@
       }
       let nextAction = "read";
       let needConsent = false;
+      let silent = false;
       const tokenClient = google.accounts.oauth2.initTokenClient({
         client_id: CLIENT_ID,
         scope: SCOPE,
         callback: (response) => {
+          const wasSilent = silent;
+          silent = false;
           if (response.error) {
-            showAuthError("Google sign-in failed: " + response.error);
+            if (!wasSilent) showAuthError("Google sign-in failed: " + response.error);
             return;
           }
           const granted = response.scope || "";
           if (!granted.includes(SHEETS_SCOPE)) {
             needConsent = true;
-            showAuthError("Google did not grant Sheets access. Click Sign in again and allow it.");
+            if (!wasSilent) showAuthError("Google did not grant Sheets access. Click Sign in again and allow it.");
             return;
           }
           needConsent = false;
           saveSession(response);
+          if (nextAction === "refresh") {
+            state.token = response.access_token;
+            return;
+          }
           const job = nextAction === "setup" ? setupDatabase : enterApp;
           job(response.access_token).catch((error) => {
             if (String(error.message).startsWith("401")) {
@@ -1172,12 +1199,23 @@
           });
         },
         error_callback: (error) => {
+          if (silent) {
+            silent = false;
+            return;
+          }
           showAuthError("Google sign-in failed: " + (error.message || error.type || "popup closed"));
         },
       });
 
+      renewSession = () => {
+        silent = true;
+        nextAction = state.token ? "refresh" : "read";
+        tokenClient.requestAccessToken({ prompt: "none" });
+      };
+
       function sessionExpired() {
         stopPolling();
+        clearTokenRefresh();
         clearSession();
         state.token = "";
         appEl.hidden = true;
@@ -1199,13 +1237,20 @@
       }
 
       function requestSignIn() {
+        silent = false;
         tokenClient.requestAccessToken({ prompt: needConsent ? "consent" : "" });
       }
 
       const saved = readSession();
-      if (saved) useToken(saved.access_token, "read");
+      if (saved) {
+        useToken(saved.access_token, "read");
+        scheduleTokenRefresh(saved.expires_at);
+      } else {
+        renewSession();
+      }
 
       button.addEventListener("click", () => {
+        silent = false;
         nextAction = "read";
         gateStatusEl.textContent = "";
         const session = readSession();
@@ -1224,6 +1269,7 @@
           return;
         }
         passwordInput.value = "";
+        silent = false;
         nextAction = "setup";
         const session = readSession();
         if (session) {
