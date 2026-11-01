@@ -4,48 +4,76 @@
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1" />
   <title>Alumni tracker</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600&display=swap" rel="stylesheet">
   <style>
     :root { color-scheme: light; }
     * { box-sizing: border-box; }
     [hidden] { display: none !important; }
-    body { margin: 0; font: 15px/1.45 system-ui, sans-serif; background: #f3efe8; color: #241c15; }
+    body { margin: 0; font: 13px/1.45 "Inter Variable", Inter, Arial, Helvetica, sans-serif; background: #efeff0; color: #23252a; }
     button, input, select, textarea { font: inherit; }
-    button { cursor: pointer; border: 1px solid #ddd4c8; background: #fff; border-radius: 8px; padding: 0.4rem 0.7rem; }
-    button.primary { background: #8c1515; color: #fff; border-color: #8c1515; }
-    button.quiet { background: transparent; }
-    button.active { background: #8c1515; color: #fff; border-color: #8c1515; }
+    button { cursor: pointer; border: 1px solid transparent; background: transparent; border-radius: 6px; padding: 0.35rem 0.55rem; color: inherit; }
+    button.primary { background: #1d1e20; color: #fff; }
+    button.ghost { border-color: #e6e6e6; background: #fff; }
+    button.quiet { color: #6b6f76; }
+    button.active { background: #e8e8e8; }
     button:disabled { opacity: 0.55; cursor: default; }
-    #gate { max-width: 28rem; margin: 12vh auto; padding: 1.5rem; background: #fff; border-radius: 14px; }
-    #gate h1 { margin: 0 0 0.4rem; font-size: 1.6rem; }
-    #gate p { color: #5c564e; }
+    #gate { max-width: 28rem; margin: 12vh auto; padding: 1.5rem; background: #fff; border: 1px solid #ececec; border-radius: 12px; }
+    #gate h1 { margin: 0 0 0.4rem; font-size: 1.4rem; font-weight: 600; }
+    #gate p, .hint, .who, .sub { color: #6b6f76; }
     #gate-status { white-space: pre-wrap; }
-    #gate-status.err, #banner.err, #form-error, #milestone-error { color: #8c1515; }
-    #app { min-height: 100vh; display: flex; flex-direction: column; }
-    header { display: flex; flex-wrap: wrap; gap: 0.6rem; align-items: center; padding: 0.75rem 1rem; background: #fff; border-bottom: 1px solid #e6dfd4; position: sticky; top: 0; z-index: 2; }
-    .brand { font-weight: 680; margin-right: 0.4rem; }
-    nav { display: flex; gap: 0.35rem; flex-wrap: wrap; }
-    .spacer { flex: 1; }
-    .who { color: #5c564e; font-size: 0.92rem; }
-    .toolbar { display: flex; flex-wrap: wrap; gap: 0.5rem; align-items: center; padding: 0.75rem 1rem 0; }
-    #banner { margin: 0.75rem 1rem 0; padding: 0.6rem 0.75rem; border-radius: 8px; background: #fff; white-space: pre-wrap; }
+    #gate-status.err, #banner.err, #form-error, #milestone-error { color: #c13b3b; }
+    #app { height: 100vh; display: flex; overflow: hidden; }
+    .sidebar { width: 244px; flex: none; display: flex; flex-direction: column; background: #efeff0; padding: 12px 10px 10px; }
+    .workspace { display: flex; align-items: center; gap: 8px; font-weight: 600; padding: 4px 8px 12px; }
+    .mark { width: 22px; height: 22px; border-radius: 6px; background: #1d1e20; color: #fff; display: grid; place-items: center; font-size: 12px; }
+    .sidebar nav, .user-list { display: flex; flex-direction: column; gap: 2px; }
+    .sidebar nav button, .user-list button { display: flex; align-items: center; gap: 8px; width: 100%; text-align: left; padding: 6px 8px; }
+    .sidebar nav button:hover, .user-list button:hover { background: #e9e9e9; }
+    .side-label { margin: 16px 8px 6px; font-size: 12px; color: #6b6f76; font-weight: 500; }
+    .user-list { overflow: auto; flex: 1; }
+    .avatar { width: 18px; height: 18px; border-radius: 50%; background: #d9d9de; color: #1d1e20; display: grid; place-items: center; font-size: 9px; font-weight: 600; flex: none; }
+    .user-name { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+    .count { margin-left: auto; color: #8a8f98; font-variant-numeric: tabular-nums; }
+    .side-footer { display: flex; align-items: center; gap: 6px; padding-top: 8px; border-top: 1px solid #e6e6e6; }
+    .side-footer .who { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; flex: 1; }
+    .main { flex: 1; min-width: 0; display: flex; flex-direction: column; background: #f9f9fa; border: 1px solid #e2e2e2; border-radius: 12px; margin: 8px 8px 8px 0; overflow: hidden; }
+    .topbar { display: flex; align-items: center; gap: 12px; padding: 10px 16px; border-bottom: 1px solid #e2e2e2; background: #f9f9fa; }
+    .topbar h1 { margin: 0; font-size: 14px; font-weight: 600; }
+    .toolbar { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; margin-left: auto; }
+    .toolbar select { max-width: 180px; }
+    #banner { margin: 8px 16px 0; padding: 8px 10px; border-radius: 8px; background: #fff; border: 1px solid #ececec; white-space: pre-wrap; }
     #banner.err { background: #fdecea; }
-    #view { padding: 0.75rem 1rem 2rem; }
-    .hint { color: #5c564e; margin: 0 0 0.75rem; }
-    .board { display: flex; gap: 0.75rem; overflow-x: auto; align-items: flex-start; padding-bottom: 0.5rem; }
-    .column { flex: 0 0 250px; background: #ebe4da; border-radius: 12px; padding: 0.55rem; min-height: 8rem; }
-    .column h2 { margin: 0.15rem 0.35rem 0.35rem; font-size: 0.82rem; font-weight: 650; letter-spacing: 0.01em; }
-    .count { color: #6d655c; font-weight: 500; }
-    .card { background: #fff; border-radius: 10px; padding: 0.65rem 0.7rem; margin-top: 0.45rem; cursor: pointer; box-shadow: 0 1px 2px rgba(40, 30, 20, 0.06); }
-    .card h3 { margin: 0.15rem 0; font-size: 0.95rem; font-weight: 640; }
-    .meta, .sub { color: #6d655c; font-size: 0.78rem; }
-    .meta { display: flex; justify-content: space-between; gap: 0.4rem; }
-    .pri-urgent { color: #8c1515; }
-    .pri-high { color: #9a3412; }
-    .pri-medium { color: #854d0e; }
-    table { width: 100%; border-collapse: collapse; background: #fff; border-radius: 12px; overflow: hidden; }
-    th, td { text-align: left; padding: 0.5rem 0.65rem; border-bottom: 1px solid #eee6dc; vertical-align: top; }
-    th { font-size: 0.78rem; color: #6d655c; background: #faf7f3; }
+    #view { flex: 1; overflow: auto; padding: 8px 12px 16px; background: #f9f9fa; }
+    .hint { margin: 0; font-size: 12px; }
+    .board { display: flex; gap: 10px; align-items: stretch; min-height: 100%; overflow-x: auto; }
+    .column { flex: 1 0 260px; min-width: 260px; display: flex; flex-direction: column; min-height: 0; }
+    .col-head { display: flex; align-items: center; gap: 8px; padding: 8px 4px; }
+    .col-head h2 { margin: 0; font-size: 13px; font-weight: 500; }
+    .column-body { overflow: auto; padding-bottom: 12px; }
+    .dot { width: 8px; height: 8px; border-radius: 50%; background: #bec2c8; flex: none; }
+    .dot-backlog, .dot-none { background: #bec2c8; }
+    .dot-todo { background: #95a2b3; }
+    .dot-in_progress, .dot-today { background: #f2c94c; }
+    .dot-done, .dot-upcoming { background: #4cb782; }
+    .dot-canceled { background: #95a2b3; }
+    .dot-overdue { background: #eb5757; }
+    .card { background: #fff; border: 1px solid #ececec; border-radius: 8px; padding: 10px 12px; margin: 0 2px 8px; cursor: pointer; box-shadow: 0 1px 1px rgba(0, 0, 0, 0.03); }
+    .card:hover { border-color: #d9d9d9; }
+    .card h3 { margin: 2px 0 8px; font-size: 13px; font-weight: 500; line-height: 1.35; }
+    .issue-id { font-family: ui-monospace, SFMono-Regular, Menlo, monospace; font-size: 12px; color: #6b6f76; }
+    .card-foot { display: flex; align-items: center; gap: 8px; color: #6b6f76; font-size: 12px; }
+    .card-foot .avatar { margin-left: auto; }
+    .pri-urgent { color: #eb5757; }
+    .pri-high { color: #f2994a; }
+    .pri-medium { color: #f2c94c; }
+    .pri-low { color: #6b6f76; }
+    table { width: 100%; border-collapse: collapse; background: #fff; border: 1px solid #ececec; border-radius: 8px; overflow: hidden; }
+    th, td { text-align: left; padding: 8px 10px; border-bottom: 1px solid #f0f0f0; vertical-align: top; font-size: 13px; }
+    th { font-size: 12px; font-weight: 500; color: #6b6f76; background: #fbfbfb; }
     tr[data-id] { cursor: pointer; }
+    tr[data-id]:hover { background: #fafafa; }
     dialog { border: 0; border-radius: 14px; padding: 0; width: min(560px, calc(100vw - 1.5rem)); box-shadow: 0 18px 50px rgba(40, 30, 20, 0.2); }
     dialog::backdrop { background: rgba(36, 28, 21, 0.35); }
     dialog form, .setup { padding: 1rem 1.1rem 1.15rem; }
@@ -58,14 +86,17 @@
     .actions { display: flex; gap: 0.5rem; justify-content: flex-end; margin-top: 0.9rem; }
     .actions .danger { margin-right: auto; color: #8c1515; }
     .children { margin: 0.3rem 0 0; padding-left: 1.1rem; }
-    details.setup { margin: 1rem; background: #fff; border-radius: 12px; }
+    details.setup { margin-top: 8px; padding: 8px; border-radius: 8px; background: #f9f9fa; border: 1px solid #e2e2e2; }
+    details.setup summary { cursor: pointer; color: #6b6f76; }
     #status { margin-top: 0.8rem; white-space: pre-wrap; }
     #status.ok { color: #21643a; }
     #status.err { color: #8c1515; }
-    @media (max-width: 720px) {
+    @media (max-width: 800px) {
       .grid { grid-template-columns: 1fr; }
       .span-2 { grid-column: auto; }
-      header .spacer { display: none; }
+      #app { flex-direction: column; height: auto; overflow: visible; }
+      .sidebar { width: auto; max-height: 46vh; }
+      .main { min-height: 70vh; }
     }
   </style>
 </head>
@@ -78,30 +109,45 @@
   </main>
 
   <div id="app" hidden>
-    <header>
-      <div class="brand">Alumni tracker</div>
+    <aside class="sidebar">
+      <div class="workspace"><span class="mark">A</span><span>Alumni tracker</span></div>
       <nav>
         <button type="button" data-view="mine" class="active">My issues <span id="mine-count" class="count"></span></button>
         <button type="button" data-view="board">Board</button>
         <button type="button" data-view="list">List</button>
       </nav>
-      <div class="spacer"></div>
-      <div class="who" id="who"></div>
-      <button id="signout" class="quiet" type="button">Sign out</button>
-    </header>
-    <div class="toolbar">
-      <label class="field">Milestone
-        <select id="milestone-filter"><option value="">All milestones</option></select>
-      </label>
-      <label class="field">Epic
-        <select id="epic-filter"><option value="">All tickets</option></select>
-      </label>
-      <button id="new-ticket" class="primary" type="button">New ticket</button>
-      <button id="new-epic" type="button">New epic</button>
-      <button id="new-milestone" type="button">New milestone</button>
+      <div class="side-label">Users</div>
+      <div class="user-list" id="user-list"></div>
+      <div class="side-footer">
+        <div class="who" id="who"></div>
+        <button id="signout" class="quiet" type="button">Sign out</button>
+      </div>
+      <details class="setup">
+        <summary>Database setup</summary>
+        <p class="hint">Creates missing tabs and writes a header row only when that row is empty. Existing cells stay as they are.</p>
+        <label>Password <input id="setup-password" type="password" autocomplete="off"></label>
+        <button id="setup" class="ghost" type="button">Set up database</button>
+        <div id="status"></div>
+        <div id="result"></div>
+      </details>
+    </aside>
+    <div class="main">
+      <div class="topbar">
+        <div>
+          <h1 id="view-title">My issues</h1>
+          <p id="view-sub" class="hint"></p>
+        </div>
+        <div class="toolbar">
+          <select id="milestone-filter" aria-label="Milestone"><option value="">All milestones</option></select>
+          <select id="epic-filter" aria-label="Epic"><option value="">All tickets</option></select>
+          <button id="new-ticket" class="primary" type="button">New ticket</button>
+          <button id="new-epic" class="ghost" type="button">New epic</button>
+          <button id="new-milestone" class="ghost" type="button">New milestone</button>
+        </div>
+      </div>
+      <div id="banner" hidden></div>
+      <div id="view"></div>
     </div>
-    <div id="banner" hidden></div>
-    <div id="view"></div>
   </div>
 
   <dialog id="editor">
@@ -165,15 +211,6 @@
     </form>
   </dialog>
 
-  <details class="setup">
-    <summary>Database setup</summary>
-    <p class="hint">Creates missing tabs and writes a header row only when that row is empty. Existing cells stay as they are.</p>
-    <label>Password <input id="setup-password" type="password" autocomplete="off"></label>
-    <button id="setup" type="button">Set up database</button>
-    <div id="status"></div>
-    <div id="result"></div>
-  </details>
-
   <script src="https://accounts.google.com/gsi/client" async defer></script>
   <script>
     const CLIENT_ID = "1052608179455-k09jjr1nuadhvqkmeur124ur51oc1fnq.apps.googleusercontent.com";
@@ -219,6 +256,7 @@
       view: "mine",
       milestoneId: "",
       epicId: "",
+      personEmail: "",
       saving: false,
       draft: null,
       milestoneDraft: null,
@@ -700,6 +738,7 @@
         if (state.epicId && ticket.id !== state.epicId && ticket.parent_id !== state.epicId) return false;
         if (state.view === "mine" && !sameEmail(ticket.assignee, state.email)) return false;
         if (state.view === "mine" && (ticket.status === "done" || ticket.status === "canceled")) return false;
+        if (state.view !== "mine" && state.personEmail && !sameEmail(ticket.assignee, state.personEmail)) return false;
         return true;
       });
     }
@@ -708,30 +747,40 @@
       return (dateKey(a.due_date) || "9999-99-99").localeCompare(dateKey(b.due_date) || "9999-99-99") || Number(a.number) - Number(b.number);
     }
 
+    function initials(name, email) {
+      const source = String(name || email || "?").trim();
+      const parts = source.split(/\s+/).filter(Boolean);
+      if (parts.length > 1) return (parts[0][0] + parts[parts.length - 1][0]).toUpperCase();
+      return source.slice(0, 2).toUpperCase();
+    }
+
     function cardHtml(ticket, includeStatus) {
-      const parts = [];
-      if (ticket.type === "epic") parts.push("Epic");
-      if (includeStatus) parts.push(STATUS_LABEL[ticket.status] || ticket.status || "Backlog");
+      const bits = [];
+      if (ticket.type === "epic") bits.push("Epic");
+      if (includeStatus) bits.push(STATUS_LABEL[ticket.status] || ticket.status || "Backlog");
       const epic = epicName(ticket.parent_id);
-      if (epic) parts.push(epic);
+      if (epic) bits.push(epic);
       const milestone = milestoneName(ticket.milestone_id);
-      if (milestone) parts.push(milestone);
-      if (state.view !== "mine" && ticket.assignee) parts.push(userLabel(ticket.assignee));
+      if (milestone) bits.push(milestone);
       const due = formatDay(ticket.due_date);
-      if (due && state.view !== "mine") parts.push(due);
+      if (due) bits.push(due);
+      const who = state.personEmail || state.view === "mine" ? "" : userLabel(ticket.assignee);
       return '<article class="card" draggable="' + (state.view === "board" ? "true" : "false") + '" data-id="' + escapeHtml(ticket.id) + '">' +
-        '<div class="meta"><span>#' + escapeHtml(ticket.number || "—") + '</span><span class="pri-' + escapeHtml(ticket.priority || "none") + '">' + escapeHtml(PRIORITY_LABEL[ticket.priority] || "None") + '</span></div>' +
+        '<div class="issue-id">SAT-' + escapeHtml(ticket.number || "—") + "</div>" +
         "<h3>" + escapeHtml(ticket.title || "Untitled") + "</h3>" +
-        '<p class="sub">' + escapeHtml(parts.join(" · ")) + "</p></article>";
+        '<div class="card-foot"><span class="pri-' + escapeHtml(ticket.priority || "none") + '">' + escapeHtml(PRIORITY_LABEL[ticket.priority] || "None") + "</span>" +
+        (bits.length ? '<span class="sub">' + escapeHtml(bits.join(" · ")) + "</span>" : "") +
+        (who ? '<span class="avatar" title="' + escapeHtml(ticket.assignee) + '">' + escapeHtml(initials(who, ticket.assignee)) + "</span>" : "") +
+        "</div></article>";
+    }
+
+    function columnHtml(id, label, items, statusDrop) {
+      return '<section class="column"' + (statusDrop ? ' data-status="' + id + '"' : "") + '><header class="col-head"><span class="dot dot-' + id + '"></span><h2>' + escapeHtml(label) + '</h2><span class="count">' + items.length + "</span></header><div class=\"column-body\">" +
+        items.map((ticket) => cardHtml(ticket, !statusDrop)).join("") + "</div></section>";
     }
 
     function renderBoard(tickets) {
-      const columns = STATUSES.map(([id, label]) => {
-        const items = tickets.filter((ticket) => (ticket.status || "backlog") === id);
-        return '<section class="column" data-status="' + id + '"><h2>' + label + ' <span class="count">' + items.length + "</span></h2>" +
-          items.map((ticket) => cardHtml(ticket, false)).join("") + "</section>";
-      }).join("");
-      viewEl.innerHTML = '<div class="board">' + columns + "</div>";
+      viewEl.innerHTML = '<div class="board">' + STATUSES.map(([id, label]) => columnHtml(id, label, tickets.filter((ticket) => (ticket.status || "backlog") === id), true)).join("") + "</div>";
     }
 
     function renderMine(tickets) {
@@ -742,13 +791,8 @@
         ["upcoming", "Upcoming", (ticket) => dateKey(ticket.due_date) > today],
         ["none", "No due date", (ticket) => !dateKey(ticket.due_date)],
       ];
-      const columns = groups.map(([id, label, test]) => {
-        const items = tickets.filter(test).sort(compareDue);
-        return '<section class="column"><h2>' + label + ' <span class="count">' + items.length + "</span></h2>" +
-          (items.length ? items.map((ticket) => cardHtml(ticket, true)).join("") : '<p class="sub">None</p>') + "</section>";
-      }).join("");
-      viewEl.innerHTML = '<p class="hint">Open tickets assigned to ' + escapeHtml(state.email || "you") + ", grouped by due date. Done and canceled items stay on the board.</p>" +
-        '<div class="board">' + columns + "</div>";
+      const columns = groups.map(([id, label, test]) => columnHtml(id, label, tickets.filter(test).sort(compareDue), false)).join("");
+      viewEl.innerHTML = '<div class="board">' + columns + "</div>";
     }
 
     function renderList(tickets) {
@@ -763,11 +807,28 @@
         (rows || '<tr><td colspan="9">No tickets yet.</td></tr>') + "</tbody></table>";
     }
 
+    function openAssigned(email) {
+      return state.tickets.filter((ticket) => !ticket.deleted_at && sameEmail(ticket.assignee, email) && ticket.status !== "done" && ticket.status !== "canceled").length;
+    }
+
     function render() {
-      document.getElementById("who").textContent = state.name ? state.name + " · " + state.email : state.email;
-      document.querySelectorAll("[data-view]").forEach((item) => item.classList.toggle("active", item.dataset.view === state.view));
-      const mineTotal = state.tickets.filter((ticket) => !ticket.deleted_at && sameEmail(ticket.assignee, state.email) && ticket.status !== "done" && ticket.status !== "canceled").length;
-      document.getElementById("mine-count").textContent = mineTotal ? "(" + mineTotal + ")" : "";
+      document.getElementById("who").textContent = state.name || state.email;
+      document.querySelectorAll("[data-view]").forEach((item) => item.classList.toggle("active", !state.personEmail && item.dataset.view === state.view));
+      const mineTotal = openAssigned(state.email);
+      document.getElementById("mine-count").textContent = mineTotal ? String(mineTotal) : "";
+      const person = knownUsers().find((user) => sameEmail(user.email, state.personEmail));
+      const titles = { mine: "My issues", board: person ? userLabel(person.email) : "Board", list: "List" };
+      const subs = {
+        mine: "Your open tickets, grouped by due date.",
+        board: person ? "Tickets assigned to " + userLabel(person.email) + "." : "All tickets by status.",
+        list: "All tickets.",
+      };
+      document.getElementById("view-title").textContent = titles[state.view] || "Board";
+      document.getElementById("view-sub").textContent = subs[state.view] || "";
+      document.getElementById("user-list").innerHTML = knownUsers().map((user) =>
+        '<button type="button" data-person="' + escapeHtml(user.email) + '"' + (state.view === "board" && sameEmail(state.personEmail, user.email) ? ' class="active"' : "") + ">" +
+        '<span class="avatar">' + escapeHtml(initials(user.name, user.email)) + '</span><span class="user-name">' + escapeHtml(userLabel(user.email)) + '</span><span class="count">' + (openAssigned(user.email) || "") + "</span></button>"
+      ).join("") || '<p class="hint">People show up here after they sign in.</p>';
       const filter = document.getElementById("milestone-filter");
       const selected = state.milestoneId;
       filter.innerHTML = '<option value="">All milestones</option>' + activeMilestones().map((milestone) =>
@@ -784,7 +845,7 @@
       if (epicFilter.value !== selectedEpic) state.epicId = "";
       const tickets = visibleTickets();
       if (!state.headers.Tickets.length) {
-        viewEl.innerHTML = '<p class="hint">The Tickets tab is missing. Open Database setup below and run it once.</p>';
+        viewEl.innerHTML = '<p class="hint">The Tickets tab is missing. Open Database setup in the sidebar and run it once.</p>';
         return;
       }
       if (state.view === "mine") renderMine(tickets);
@@ -1085,9 +1146,18 @@
       document.querySelectorAll("[data-view]").forEach((item) => {
         item.addEventListener("click", () => {
           state.view = item.dataset.view;
+          state.personEmail = "";
           setBanner("");
           render();
         });
+      });
+      document.getElementById("user-list").addEventListener("click", (event) => {
+        const person = event.target.closest("[data-person]");
+        if (!person) return;
+        state.personEmail = person.dataset.person;
+        state.view = "board";
+        setBanner("");
+        render();
       });
       document.getElementById("milestone-filter").addEventListener("change", (event) => {
         state.milestoneId = event.target.value;
