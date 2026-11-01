@@ -93,6 +93,9 @@
       <label class="field">Milestone
         <select id="milestone-filter"><option value="">All milestones</option></select>
       </label>
+      <label class="field">Epic
+        <select id="epic-filter"><option value="">All tickets</option></select>
+      </label>
       <button id="new-ticket" class="primary" type="button">New ticket</button>
       <button id="new-epic" type="button">New epic</button>
       <button id="new-milestone" type="button">New milestone</button>
@@ -215,6 +218,7 @@
       headers: { Tickets: [], Milestones: [], Users: [] },
       view: "mine",
       milestoneId: "",
+      epicId: "",
       draft: null,
       milestoneDraft: null,
       suppressClick: false,
@@ -610,10 +614,23 @@
       return state.tickets.find((ticket) => ticket.id === id && ticket.type === "epic" && !ticket.deleted_at)?.title || "";
     }
 
+    function epicsInView() {
+      const ids = new Set();
+      state.tickets.forEach((ticket) => {
+        if (ticket.deleted_at) return;
+        if (state.milestoneId && ticket.milestone_id !== state.milestoneId) return;
+        if (ticket.type === "epic" && ticket.id) ids.add(ticket.id);
+        if (ticket.parent_id) ids.add(ticket.parent_id);
+      });
+      return state.tickets.filter((ticket) => ticket.type === "epic" && ticket.id && !ticket.deleted_at && ids.has(ticket.id))
+        .sort((a, b) => (a.title || "").localeCompare(b.title || ""));
+    }
+
     function visibleTickets() {
       return state.tickets.filter((ticket) => {
         if (ticket.deleted_at) return false;
         if (state.milestoneId && ticket.milestone_id !== state.milestoneId) return false;
+        if (state.epicId && ticket.id !== state.epicId && ticket.parent_id !== state.epicId) return false;
         if (state.view === "mine" && !sameEmail(ticket.assignee, state.email)) return false;
         if (state.view === "mine" && (ticket.status === "done" || ticket.status === "canceled")) return false;
         return true;
@@ -691,6 +708,13 @@
       ).join("");
       filter.value = selected;
       if (filter.value !== selected) state.milestoneId = "";
+      const epicFilter = document.getElementById("epic-filter");
+      const selectedEpic = state.epicId;
+      epicFilter.innerHTML = '<option value="">All tickets</option>' + epicsInView().map((epic) =>
+        '<option value="' + escapeHtml(epic.id) + '">' + escapeHtml(epic.title || "Untitled") + "</option>"
+      ).join("");
+      epicFilter.value = selectedEpic;
+      if (epicFilter.value !== selectedEpic) state.epicId = "";
       const tickets = visibleTickets();
       if (!state.headers.Tickets.length) {
         viewEl.innerHTML = '<p class="hint">The Tickets tab is missing. Open Database setup below and run it once.</p>';
@@ -724,7 +748,9 @@
       document.getElementById("f-parent").disabled = ticket.type === "epic";
       document.getElementById("f-labels").value = ticket.labels || "";
       document.getElementById("f-description").value = ticket.description || "";
-      const children = state.tickets.filter((item) => item.parent_id === ticket.id && !item.deleted_at);
+      const children = ticket.id && ticket.type === "epic"
+        ? state.tickets.filter((item) => item.parent_id === ticket.id && !item.deleted_at)
+        : [];
       document.getElementById("f-children").innerHTML = children.length ? "<p class=\"sub\">Tickets in this epic</p><ul class=\"children\">" + children.map((child) => "<li>#" + escapeHtml(child.number || "—") + " " + escapeHtml(child.title || "Untitled") + "</li>").join("") + "</ul>" : "";
       document.getElementById("f-delete").hidden = !ticket._row;
       document.getElementById("form-error").textContent = "";
@@ -980,6 +1006,10 @@
       });
       document.getElementById("milestone-filter").addEventListener("change", (event) => {
         state.milestoneId = event.target.value;
+        render();
+      });
+      document.getElementById("epic-filter").addEventListener("change", (event) => {
+        state.epicId = event.target.value;
         render();
       });
       document.getElementById("new-ticket").addEventListener("click", () => openTicket(blankTicket("ticket")));
