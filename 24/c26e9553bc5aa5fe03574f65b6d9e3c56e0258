@@ -1,0 +1,36 @@
+index.html
+  s_d80bcc07142af5::t_1f570637a576c0 14
+  s_d80bcc07142af5::t_8d966906f0de90 259
+  s_d80bcc07142af5::t_addf4a9d656148 750-756,758-760,762,764,766-767,769,771-779,783
+  s_d80bcc07142af5::t_51fdfd623d8d63 1149,1154-1160
+  s_d80bcc07142af5::t_8b4395a9806ab0 794-795
+  s_d80bcc07142af5::t_4e3c12044351f5 28
+  s_d80bcc07142af5::t_5f8ff78d10f579 7-9
+  s_d80bcc07142af5::t_2cc9a0c613d1dd 48
+  s_d80bcc07142af5::t_3f949a8871e7ce 41-42
+  s_d80bcc07142af5::t_9687a8a3512af8 810-813,815-831
+  s_d80bcc07142af5::t_85226cb92e4462 848
+  s_d80bcc07142af5::t_ac7a72bce5bb6f 89-90
+  s_d80bcc07142af5::t_f6cdc447932d01 94,97-99
+  s_d80bcc07142af5::t_3a8f53ba7d2c79 67
+  s_d80bcc07142af5::t_2cbf69b4fba505 741
+  s_d80bcc07142af5::t_72db2492a1f435 112-113,119-149
+  s_d80bcc07142af5::t_28654fb80a80b9 16-20,22-24,26-27,29-40,43-46,49-66,68-74,76
+  s_d80bcc07142af5::t_8ad4cf84fdf8af 1161
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "24c26e9553bc5aa5fe03574f65b6d9e3c56e0258",
+  "prompts": {},
+  "sessions": {
+    "s_d80bcc07142af5": {
+      "agent_id": {
+        "tool": "cursor",
+        "id": "d257f534-6665-40da-931c-f2c950438dd0",
+        "model": "grok-4.7"
+      },
+      "human_author": "Susheel Daswani <Sdaswani@cs.stanford.edu>"
+    }
+  }
+}
