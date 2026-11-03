@@ -2,7 +2,7 @@
 <html lang="en">
 <head>
   <meta charset="utf-8" />
-  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
   <title>Alumni tracker</title>
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
@@ -47,6 +47,7 @@
     #banner.err { background: #fdecea; }
     #view { flex: 1; overflow: auto; padding: 8px 12px 16px; background: #f9f9fa; }
     .hint { margin: 0; font-size: 12px; }
+    .lane-switch { display: none; }
     .board { display: flex; gap: 10px; align-items: stretch; min-height: 100%; overflow-x: auto; }
     .column { flex: 1 0 260px; min-width: 260px; display: flex; flex-direction: column; min-height: 0; }
     .col-head { display: flex; align-items: center; gap: 8px; padding: 8px 4px; }
@@ -94,9 +95,33 @@
     @media (max-width: 800px) {
       .grid { grid-template-columns: 1fr; }
       .span-2 { grid-column: auto; }
-      #app { flex-direction: column; height: auto; overflow: visible; }
-      .sidebar { width: auto; max-height: 46vh; }
-      .main { min-height: 70vh; }
+      #app { flex-direction: column; height: 100dvh; overflow: hidden; }
+      .sidebar { width: auto; flex: none; padding: 8px 10px 4px; }
+      .workspace { padding-bottom: 6px; }
+      .sidebar nav { flex-direction: row; }
+      .sidebar nav button { width: auto; flex: 1; justify-content: center; }
+      .sidebar nav .count { margin-left: 6px; }
+      .side-label { display: none; }
+      .user-list { flex: none; flex-direction: row; overflow-x: auto; }
+      .user-list button { width: auto; flex: none; }
+      .side-footer { border-top: 0; padding: 4px 8px 0; }
+      details.setup { display: none; }
+      .main { margin: 0; border-radius: 12px 12px 0 0; min-height: 0; }
+      .topbar { flex-direction: column; align-items: stretch; gap: 8px; padding: 10px 12px; }
+      .toolbar { margin-left: 0; }
+      .toolbar select, .toolbar button { flex: 1 1 auto; max-width: none; }
+      .lane-switch { display: flex; gap: 6px; overflow-x: auto; padding: 4px 2px 8px; }
+      .lane-switch button { flex: none; border: 1px solid #e2e2e2; background: #fff; white-space: nowrap; }
+      .lane-switch button.active { background: #1d1e20; color: #fff; }
+      .lane-switch button.active .count { color: #fff; }
+      .board:not(.stack) { display: block; overflow: visible; min-height: 0; }
+      .board:not(.stack) .column { display: none; width: 100%; min-width: 0; flex: none; }
+      .board:not(.stack) .column.show-lane { display: flex; }
+      .board:not(.stack) .col-head { display: none; }
+      .board.stack { flex-direction: column; overflow: visible; }
+      .board.stack .column { width: 100%; min-width: 0; flex: none; }
+      dialog { width: calc(100vw - 16px); max-height: calc(100dvh - 16px); }
+      dialog form { max-height: calc(100dvh - 32px); overflow: auto; }
     }
   </style>
 </head>
@@ -257,6 +282,7 @@
       milestoneId: "",
       epicId: "",
       personEmail: "",
+      lane: "todo",
       saving: false,
       draft: null,
       milestoneDraft: null,
@@ -780,7 +806,16 @@
     }
 
     function renderBoard(tickets) {
-      viewEl.innerHTML = '<div class="board">' + STATUSES.map(([id, label]) => columnHtml(id, label, tickets.filter((ticket) => (ticket.status || "backlog") === id), true)).join("") + "</div>";
+      if (!STATUSES.some(([id]) => id === state.lane)) state.lane = "todo";
+      const switcher = '<div class="lane-switch">' + STATUSES.map(([id, label]) => {
+        const count = tickets.filter((ticket) => (ticket.status || "backlog") === id).length;
+        return '<button type="button" data-lane="' + id + '"' + (state.lane === id ? ' class="active"' : "") + ">" + escapeHtml(label) + ' <span class="count">' + count + "</span></button>";
+      }).join("") + "</div>";
+      const columns = STATUSES.map(([id, label]) => {
+        const section = columnHtml(id, label, tickets.filter((ticket) => (ticket.status || "backlog") === id), true);
+        return state.lane === id ? section.replace('class="column"', 'class="column show-lane"') : section;
+      }).join("");
+      viewEl.innerHTML = switcher + '<div class="board">' + columns + "</div>";
     }
 
     function renderMine(tickets) {
@@ -792,7 +827,7 @@
         ["none", "No due date", (ticket) => !dateKey(ticket.due_date)],
       ];
       const columns = groups.map(([id, label, test]) => columnHtml(id, label, tickets.filter(test).sort(compareDue), false)).join("");
-      viewEl.innerHTML = '<div class="board">' + columns + "</div>";
+      viewEl.innerHTML = '<div class="board stack">' + columns + "</div>";
     }
 
     function renderList(tickets) {
@@ -1189,6 +1224,12 @@
       document.getElementById("m-delete").addEventListener("click", deleteMilestone);
       viewEl.addEventListener("click", (event) => {
         if (state.suppressClick) return;
+        const lane = event.target.closest("[data-lane]");
+        if (lane) {
+          state.lane = lane.dataset.lane;
+          render();
+          return;
+        }
         const row = event.target.closest("[data-id]");
         if (!row) return;
         const ticket = state.tickets.find((item) => item.id === row.dataset.id);
